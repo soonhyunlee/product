@@ -141,7 +141,7 @@ def refactor_to_concise_name(text):
     if len(text) <= 9:
         return text
 
-    # 1. 띄어쓰기 결합으로 글자 수 축소 (예: "양면 테이프" -> "양면테이프")
+    # 1. 띄어쓰기 결합으로 글자 수 축소 (예: "양면 테이기" -> "양면테이프")
     compound_words = {
         "면 장갑": "면장갑",
         "황 테이프": "황테이프",
@@ -249,7 +249,7 @@ def refactor_to_concise_name(text):
     # 5. [핵심 알고리즘] 단어가 여러 개인 경우 뒤쪽 명사 중심으로 추출하여 약 5자 내외로 맞춤
     words = pure_text.split()
     if len(words) >= 2:
-        # 뒤쪽의 핵심 명사 2개를 결합 (예: "고양이발 자" -> "고양이발 자", "우드 클립보드" -> "우드 클립보드")
+        # 뒤쪽의 핵심 명사 2개를 결합
         last_two = words[-2:]
         candidate = " ".join(last_two)
         
@@ -259,7 +259,7 @@ def refactor_to_concise_name(text):
             
         pure_text = candidate
     else:
-        # 단어가 1개인 경우 글자 자르기 (예: "주유혼유방지" -> "혼유방지")
+        # 단어가 1개인 경우 글자 자르기
         if len(pure_text) > 9:
             if "혼유방지" in pure_text:
                 pure_text = "혼유방지"
@@ -287,7 +287,6 @@ def refactor_to_concise_name(text):
 def clean_scraped_title(scraped_title):
     """
     웹 페이지 크롤링 시 포함되는 사이트명 등의 공통 접미사를 필터링합니다.
-    예: '삼성 파워건 VS20R9043S3 : 네이버 쇼핑' -> '삼성 파워건 VS20R9043S3'
     """
     if not scraped_title:
         return ""
@@ -311,8 +310,7 @@ def clean_scraped_title(scraped_title):
 
 def calculate_overlap(str1, str2):
     """
-    두 문자열 간의 핵심 단어 오버랩(유사도)을 계산합니다. (Jaccard 유사도 기반)
-    크롤링한 페이지가 엉뚱한 페이지거나 차단 페이지인지 확인하는 용도로 사용됩니다.
+    두 문자열 간의 핵심 단어 오버랩(유사도)을 계산합니다.
     """
     words1 = set([w for w in re.findall(r'\w+', str1.lower()) if len(w) > 1])
     words2 = set([w for w in re.findall(r'\w+', str2.lower()) if len(w) > 1])
@@ -338,13 +336,11 @@ def scrape_product_title(url):
     }
     
     try:
-        # 5초 타임아웃 지정 및 SSL 검증 생략
         response = requests.get(url, headers=headers, timeout=5, verify=False)
         if response.status_code != 200:
             print(f"   [크롤링 경고] HTTP 상태 코드 {response.status_code}")
             return None
         
-        # HTML 바이트를 먼저 디코딩하여 문자열로 변환 (BeautifulSoup의 오독 방지)
         html_text = None
         
         # 1. 헤더에 charset이 선언되어 있는 경우 우선 사용
@@ -357,7 +353,7 @@ def scrape_product_title(url):
             except Exception:
                 pass
 
-        # 2. apparent_encoding이 한국어/유니코드 계열인 경우에만 신뢰 (Cyrillic, Western 등 배제)
+        # 2. apparent_encoding이 한국어/유니코드 계열인 경우에만 신뢰
         if not html_text:
             apparent = response.apparent_encoding
             if apparent:
@@ -368,7 +364,7 @@ def scrape_product_title(url):
                     except Exception:
                         pass
 
-        # 3. 순차 디코딩 테스트 (가장 안전하고 검증된 방식)
+        # 3. 순차 디코딩 테스트
         if not html_text:
             for encoding in ['utf-8', 'cp949', 'euc-kr']:
                 try:
@@ -383,7 +379,7 @@ def scrape_product_title(url):
             
         soup = BeautifulSoup(html_text, 'lxml')
         
-        # 1순위: OpenGraph og:title (가장 정제된 경우가 많음)
+        # 1순위: OpenGraph og:title
         og_title = soup.find("meta", property="og:title")
         if og_title and og_title.get("content"):
             return og_title.get("content").strip()
@@ -393,7 +389,7 @@ def scrape_product_title(url):
         if twitter_title and twitter_title.get("content"):
             return twitter_title.get("content").strip()
             
-        # 3순위: H1 태그 (보통 상세페이지의 주 상품명)
+        # 3순위: H1 태그
         h1 = soup.find("h1")
         if h1 and h1.text:
             h1_text = h1.text.strip()
@@ -412,27 +408,23 @@ def scrape_product_title(url):
 def is_proper_product_name(text):
     """
     상품명이 한글 명사를 포함하는 정상적인 상품명인지 판별합니다.
-    한글이 아예 없거나, 너무 짧고 코드 형태인 경우 '마땅한 상품명이 아님'으로 판단합니다.
     """
     if not text:
         return False
-    # 한글 문자 추출
     hangul = re.findall(r'[가-힣]', text)
     if len(hangul) == 0:
-        return False # 한글이 한 글자도 없으면 정상적인 한글 상품명이 아님 (모델코드 등)
+        return False
     if len(text) <= 5 and not any(noun in text for noun in ["장갑", "가위", "행주", "필름", "퍼티", "테이프"]):
-        return False # 5자 이하이고 대표 명사가 없으면 불안정한 상품명
+        return False
     return True
 
 def check_model_code_relevance(prod_name_a, scraped_title):
     """
     원본 상품명(A열)의 핵심 모델명이나 고유 숫자 코드가 크롤링한 상품명에 포함되어 있는지 확인합니다.
-    이를 통해 70~80% 이상의 실제 상품 연관성이 확보되는 경우 참을 반환합니다.
     """
     if not prod_name_a or not scraped_title:
         return False
         
-    # 모델명 패턴 추출 (예: LP-7000, H10A, G-250, ECC, 9346 등 3자리 이상 숫자 및 영숫자 조합)
     model_patterns = re.findall(r'\b[a-zA-Z0-9]+-[a-zA-Z0-9]+\b|\b[a-zA-Z]+[0-9]+[a-zA-Z]*\b|\b[0-9]{3,}\b', prod_name_a)
     
     if not model_patterns:
@@ -441,7 +433,7 @@ def check_model_code_relevance(prod_name_a, scraped_title):
     scraped_lower = scraped_title.lower()
     for pattern in model_patterns:
         if pattern.lower() in scraped_lower:
-            return True # 핵심 모델 코드가 일치하면 70-80% 이상 유사/동일한 상품으로 판정
+            return True
             
     return False
 
@@ -459,29 +451,23 @@ def process_excel(input_path, output_path, progress_callback=None):
         print(f"오류: {input_path} 파일이 존재하지 않습니다.")
         return
         
-    # 엑셀 데이터 로드
     df = pd.read_excel(input_path)
     
-    # 컬럼 인덱스 매핑 (A열: 0번째, B열: 1번째, C열: 2번째)
-    # 컬럼명이 한글이나 영어 어떤 것으로 되어있어도 처리할 수 있도록 위치 기반으로 설정
     orig_cols = df.columns.tolist()
     if len(orig_cols) < 2:
         print("오류: 엑셀 파일은 최소 2개 이상의 열(A열: 상품명, B열: URL)을 포함해야 합니다.")
         return
         
-    col_a = orig_cols[0] # A열 (상품명)
-    col_b = orig_cols[1] # B열 (URL)
+    col_a = orig_cols[0]
+    col_b = orig_cols[1]
     
-    # C열이 없으면 추가 생성
     if len(orig_cols) < 3:
         col_c = "정제된 상품명"
         df[col_c] = ""
     else:
-        col_c = orig_cols[2] # C열 (정제 상품명)
+        col_c = orig_cols[2]
         
-    # 데이터 타입 변환 (TypeError 방지 및 NaN 처리)
     df[col_c] = df[col_c].fillna("").astype(str)
-        
     total_rows = len(df)
     
     for idx, row in df.iterrows():
@@ -494,12 +480,10 @@ def process_excel(input_path, output_path, progress_callback=None):
         cleaned_result = ""
         scraped_title = None
         
-        # 상품명이 9자 이하인 경우 리팩토링 건너뜀 (원본 그대로 보존)
         if len(prod_name_a) <= 9:
             print("   [건너뜀] 상품명이 9자 이하이므로 정제 처리를 건너뛰고 그대로 보존합니다.")
             cleaned_result = prod_name_a
         else:
-            # URL이 올바르고 접속 가능한 경우 크롤링 시도
             if url.startswith("http"):
                 print(f"   - URL 접속 시도: {url}")
                 raw_title = scrape_product_title(url)
@@ -507,7 +491,6 @@ def process_excel(input_path, output_path, progress_callback=None):
                     scraped_title = clean_scraped_title(raw_title)
                     print(f"   - 크롤링 성공 상품명: {scraped_title}")
                     
-            # 크롤링 성공 시, 원본명과 비교하여 검증
             if scraped_title:
                 similarity = calculate_overlap(prod_name_a, scraped_title)
                 is_proper_a = is_proper_product_name(prod_name_a)
@@ -517,51 +500,45 @@ def process_excel(input_path, output_path, progress_callback=None):
                 print(f"   - 원본명 신뢰도 판별: {'정상 한글 상품명' if is_proper_a else '불안정한 상품명(모델코드/기호 중심)'}")
                 print(f"   - 핵심 모델/규격 코드 일치 검사: {'일치함' if has_model_match else '일치하지 않음'}")
                 
-                # A열이 불안정하더라도 모델 코드가 일치하는 경우(70~80% 유사성 확보) 혹은 기본 단어 유사도가 15% 이상인 경우 적용
                 if similarity >= 0.15 or (not is_proper_a and has_model_match) or has_model_match:
                     if not is_proper_a and has_model_match:
                         print("   => [유사성 우회 보정] A열이 미비하지만 핵심 모델코드가 일치하여 크롤링 상품명을 70~80% 유사 상품명으로 채택합니다.")
                     cleaned_result = clean_product_name(scraped_title)
                     print(f"   -> [크롤링 데이터 정제] 적용: {cleaned_result}")
                 else:
-                    # 크롤링한 타이틀이 완전히 다른 경우 (메인 페이지로 튕겼거나, 차단당해 다른 화면이 뜬 경우)
                     print("   [검증 불합격] 크롤링한 상품명이 원본과 일치하지 않아 원본(A열) 기반으로 정제합니다.")
                     cleaned_result = clean_product_name(prod_name_a)
                     print(f"   -> [원본 데이터 정제(Fallback)] 적용: {cleaned_result}")
             else:
-                # 크롤링을 아예 하지 못했거나 실패한 경우 원본을 정제하여 사용 (Fallback)
                 print("   [접속 불가능] 원본(A열)을 기반으로 정제 처리를 진행합니다.")
                 cleaned_result = clean_product_name(prod_name_a)
                 print(f"   -> [원본 데이터 정제(Fallback)] 적용: {cleaned_result}")
             
-        # 정제 결과명이 9글자를 초과하는 경우 9자 내외로 상품특징 최적화 압축 진행
         if len(cleaned_result) > 9:
             concise_result = refactor_to_concise_name(cleaned_result)
             print(f"   => [9자 최적화 압축 적용]: {cleaned_result} -> {concise_result} (길이: {len(concise_result)}자)")
             cleaned_result = concise_result
             
-        # 결과값 기입
         df.at[idx, col_c] = cleaned_result
         if progress_callback:
             progress_callback(idx + 1, total_rows)
-        time.sleep(0.5) # 웹서버 부하 경감 및 차단 방지를 위한 대기
+        time.sleep(0.5)
         
-    # 파일 저장
     df.to_excel(output_path, index=False)
     print("\n" + "=" * 60)
     print(f"처리가 완료되었습니다! 신규 파일이 저장되었습니다: {output_path}")
     print("=" * 60)
 
+# =========================================================================
+# 5. 웹 서비스 (Flask GUI) 구현부
+# =========================================================================
+
 import sys
 import threading
-import time
 import webbrowser
 from flask import Flask, render_template_string, jsonify, request
-import os
-import pandas as pd
-import requests
-import re
-from bs4 import BeautifulSoup
+import tempfile
+from flask import send_from_directory
 
 app = Flask(__name__)
 
@@ -586,7 +563,6 @@ class WebRedirector:
             self.original_stdout.write(string)
         except Exception:
             try:
-                # Windows CP949 인코딩 불가능 문자 대체 처리
                 self.original_stdout.write(string.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding))
             except Exception:
                 pass
@@ -641,9 +617,75 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .subtitle {
             color: #8c8c9a;
             font-size: 15px;
-            margin-bottom: 35px;
+            margin-bottom: 30px;
             line-height: 1.6;
         }
+        
+        /* 탭 스타일 */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #202026;
+            padding-bottom: 8px;
+        }
+        .tab {
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #8c8c9a;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .tab:hover {
+            color: #e2e2e9;
+        }
+        .tab.active {
+            background: rgba(56, 239, 125, 0.08);
+            color: #38ef7d;
+            border: 1px solid rgba(56, 239, 125, 0.15);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* 업로드 구역 */
+        .upload-zone {
+            border: 2px dashed #282830;
+            border-radius: 12px;
+            padding: 45px 20px;
+            text-align: center;
+            background: #09090b;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 24px;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #38ef7d;
+            background: rgba(56, 239, 125, 0.02);
+        }
+        .upload-icon {
+            font-size: 44px;
+            margin-bottom: 14px;
+            color: #8c8c9a;
+        }
+        .upload-text {
+            font-size: 15px;
+            color: #e2e2e9;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+        .upload-subtext {
+            font-size: 12px;
+            color: #8c8c9a;
+        }
+        
         .form-group {
             margin-bottom: 24px;
         }
@@ -698,6 +740,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             cursor: not-allowed;
             transform: none;
         }
+        
+        .btn-download {
+            background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+            color: #050e14;
+            font-size: 16px;
+            font-weight: 700;
+            box-shadow: 0 4px 15px rgba(0, 242, 254, 0.2);
+            text-decoration: none;
+        }
+        .btn-download:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+        
         .progress-container {
             margin-top: 35px;
             display: none;
@@ -764,21 +820,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             background: rgba(56, 239, 125, 0.05);
             border: 1px solid rgba(56, 239, 125, 0.2);
             border-radius: 12px;
-            padding: 20px;
+            padding: 24px;
             margin-top: 30px;
             text-align: center;
             display: none;
         }
         .success-title {
             color: #38ef7d;
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
         .success-path {
             font-family: 'Consolas', monospace;
             font-size: 13px;
             color: #a1a1aa;
+            margin-bottom: 20px;
+        }
+        
+        #file_input {
+            display: none;
         }
     </style>
 </head>
@@ -788,22 +849,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="subtitle">
             스마트스토어/쿠팡 등록을 위해 불필요한 단어를 제거하고, <strong>한글 기준 9글자 이내</strong> 및 <strong>수량(1p, 20매 등) 보존</strong> 조건에 맞춰 핵심 단어를 지능형으로 축약합니다.
         </div>
-
-        <div class="form-group">
-            <label for="input_path">입력 엑셀 파일 경로 (A열: 상품명, B열: URL)</label>
-            <input type="text" id="input_path" value="c:\\product\\TEST.xlsx" placeholder="예: C:\\product\\TEST.xlsx">
+        
+        <!-- 탭 전환 장치 -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('upload')">📁 클라우드 간편 정제 (추천)</div>
+            <div class="tab" onclick="switchTab('path')">💻 로컬 서버 직접 경로 지정</div>
         </div>
 
-        <div class="form-group">
-            <label for="output_path">결과 엑셀 파일 저장 경로 (C열 자동 추가)</label>
-            <input type="text" id="output_path" value="c:\\product\\TEST_cleaned.xlsx" placeholder="예: C:\\product\\TEST_cleaned.xlsx">
+        <!-- 탭 1: 파일 업로드/다운로드 -->
+        <div id="tab_upload" class="tab-content active">
+            <input type="file" id="file_input" accept=".xlsx, .xls" onchange="handleFileSelect(event)">
+            <div class="upload-zone" id="drop_zone" onclick="document.getElementById('file_input').click()">
+                <div class="upload-icon">📊</div>
+                <div class="upload-text" id="upload_text">여기에 엑셀 파일을 드래그하여 올려놓거나 클릭하여 선택하세요</div>
+                <div class="upload-subtext">지원 포맷: .xlsx, .xls (A열: 상품명, B열: URL)</div>
+            </div>
+            <button id="btn_upload_run" class="btn" onclick="startUploadRun()" disabled>
+                <span>선택된 파일 정제 시작</span>
+            </button>
         </div>
 
-        <button id="btn_run" class="btn" onclick="startRun()">
-            <span>상품명 정제 시작</span>
-        </button>
+        <!-- 탭 2: 로컬 직접 경로 기입 -->
+        <div id="tab_path" class="tab-content">
+            <div class="form-group">
+                <label for="input_path">입력 엑셀 파일 경로 (A열: 상품명, B열: URL)</label>
+                <input type="text" id="input_path" value="c:\\product\\TEST.xlsx" placeholder="예: C:\\product\\TEST.xlsx">
+            </div>
 
-        <!-- 진행바 영역 -->
+            <div class="form-group">
+                <label for="output_path">결과 엑셀 파일 저장 경로 (C열 자동 추가)</label>
+                <input type="text" id="output_path" value="c:\\product\\TEST_cleaned.xlsx" placeholder="예: C:\\product\\TEST_cleaned.xlsx">
+            </div>
+
+            <button id="btn_path_run" class="btn" onclick="startPathRun()">
+                <span>상품명 정제 시작</span>
+            </button>
+        </div>
+
+        <!-- 진행바 영역 (공통) -->
         <div class="progress-container" id="progress_area">
             <div class="progress-header">
                 <span class="progress-status" id="status_text">정제 프로세스 준비 중...</span>
@@ -814,110 +897,242 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- 터미널 모니터링 영역 -->
+        <!-- 터미널 모니터링 영역 (공통) -->
         <div class="terminal-container" id="terminal_area">
             <div class="terminal-header">
                 <div class="terminal-dot"></div>
                 <div class="terminal-dot yellow"></div>
                 <div class="terminal-dot green"></div>
-                <span style="margin-left: 8px; font-weight: 500;">Engine Monitor Logs</span>
+                <span style="margin-left: 8px; font-weight: 500; color: #8c8c9a;">Engine Monitor Logs</span>
             </div>
             <div class="terminal-body" id="terminal_body"></div>
         </div>
 
-        <!-- 최종 완료 영역 -->
+        <!-- 최종 완료 및 다운로드 영역 -->
         <div class="success-box" id="success_area">
             <div class="success-title">🎉 모든 상품명 정제가 완료되었습니다!</div>
-            <div class="success-path" id="success_path">결과 파일: c:\\product\\TEST_cleaned.xlsx</div>
+            <div class="success-path" id="success_path">결과 파일이 성공적으로 보존되었습니다.</div>
+            <a href="#" id="btn_download" class="btn btn-download" style="display: none;">📥 정제 완료 엑셀 다운로드</a>
         </div>
     </div>
 
     <script>
         let intervalId = null;
+        let lastLogIndex = 0;
+        let selectedFile = null;
+        let currentMode = 'upload'; // 'upload' or 'path'
+        let downloadFilename = "";
 
-        function startProcessing() {
-            const inputPath = document.getElementById('input_path').value.trim();
-            const outputPath = document.getElementById('output_path').value.trim();
-
-            if (!inputPath || !outputPath) {
-                alert('파일 경로를 올바르게 입력해 주세요.');
+        // 탭 전환 핸들러
+        function switchTab(mode) {
+            if (intervalId) {
+                alert('현재 정제 작업이 진행 중입니다. 완료 후 전환해 주세요.');
                 return;
             }
+            currentMode = mode;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (mode === 'upload') {
+                document.querySelector('.tabs .tab:nth-child(1)').classList.add('active');
+                document.getElementById('tab_upload').classList.add('active');
+            } else {
+                document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
+                document.getElementById('tab_path').classList.add('active');
+            }
+            
+            // 공통 컴포넌트 초기화
+            document.getElementById('progress_area').style.display = 'none';
+            document.getElementById('terminal_area').style.display = 'none';
+            document.getElementById('success_area').style.display = 'none';
+        }
 
-            // UI 상태 변경
-            const btn = document.getElementById('btn_run');
-            btn.className = "btn btn-large btn-disabled";
-            btn.disabled = true;
-            btn.innerText = "정제 처리 진행 중...";
+        // 파일 드래그앤드롭 이벤트 리스너 설정
+        const dropZone = document.getElementById('drop_zone');
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            }, false);
+        });
 
-            document.getElementById('progress_section').style.display = 'block';
-            document.getElementById('terminal_section').style.display = 'block';
-            document.getElementById('terminal_body').innerHTML = '';
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            }, false);
+        });
 
-            fetch('/start', {
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                setFile(files[0]);
+            }
+        });
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                setFile(files[0]);
+            }
+        }
+
+        function setFile(file) {
+            if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+                alert('엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다.');
+                return;
+            }
+            selectedFile = file;
+            document.getElementById('upload_text').innerText = `선택된 파일: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+            document.getElementById('upload_text').style.color = '#38ef7d';
+            document.getElementById('btn_upload_run').disabled = false;
+        }
+
+        // 방식 1: 파일 업로드 실행
+        function startUploadRun() {
+            if (!selectedFile) return;
+
+            // UI 셋업
+            disableAllControls();
+            document.getElementById('progress_area').style.display = 'block';
+            document.getElementById('terminal_area').style.display = 'block';
+            document.getElementById('success_area').style.display = 'none';
+            document.getElementById('btn_download').style.display = 'none';
+            document.getElementById('terminal_body').innerHTML = "";
+            lastLogIndex = 0;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            fetch('/upload', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ input_path: inputPath, output_path: outputPath })
+                body: formData
             })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'started') {
-                    // 폴링 시작
-                    intervalId = setInterval(checkProgress, 1000);
+                    downloadFilename = data.output_filename;
+                    intervalId = setInterval(trackProgress, 800);
                 } else {
-                    alert('처리를 시작하지 못했습니다: ' + data.message);
-                    resetUI();
+                    alert('오류: ' + data.message);
+                    enableAllControls();
                 }
             })
             .catch(err => {
-                alert('서버와의 통신 오류: ' + err);
-                resetUI();
+                alert('업로드 중 네트워크 오류가 발생했습니다.');
+                enableAllControls();
             });
         }
 
-        function checkProgress() {
-            fetch('/progress')
+        // 방식 2: 로컬 경로 실행
+        function startPathRun() {
+            const inPath = document.getElementById('input_path').value.trim();
+            const outPath = document.getElementById('output_path').value.trim();
+
+            if (!inPath || !outPath) {
+                alert('경로를 모두 기입해 주세요.');
+                return;
+            }
+
+            disableAllControls();
+            document.getElementById('progress_area').style.display = 'block';
+            document.getElementById('terminal_area').style.display = 'block';
+            document.getElementById('success_area').style.display = 'none';
+            document.getElementById('btn_download').style.display = 'none';
+            document.getElementById('terminal_body').innerHTML = "";
+            lastLogIndex = 0;
+
+            fetch('/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ input_path: inPath, output_path: outPath })
+            })
             .then(res => res.json())
             .then(data => {
-                // 프로그레스 바 및 텍스트 업데이트
-                document.getElementById('percent_text').innerText = data.percent + '%';
-                document.getElementById('progress_fill').style.width = data.percent + '%';
-                
-                if (data.total > 0) {
-                    document.getElementById('status_text').innerText = `정제 진행 중: ${data.percent}% (${data.current} / ${data.total} 완료)`;
+                if (data.status === 'started') {
+                    downloadFilename = "";
+                    intervalId = setInterval(trackProgress, 800);
                 } else {
-                    document.getElementById('status_text').innerText = '상세페이지 스캔 시작 대기 중...';
+                    alert('에러: ' + data.message);
+                    enableAllControls();
+                }
+            })
+            .catch(err => {
+                alert('요청 중 네트워크 오류가 발생했습니다.');
+                enableAllControls();
+            });
+        }
+
+        function trackProgress() {
+            fetch('/progress')
+            .then(res => res.json())
+            .then(state => {
+                const percent = state.percent || 0;
+                const current = state.current || 0;
+                const total = state.total || 0;
+                
+                document.getElementById('bar_fill').style.width = percent + '%';
+                document.getElementById('percent_text').innerText = percent + '%';
+                document.getElementById('status_text').innerText = `진행률: ${current} / ${total} 개 처리 중...`;
+
+                // 실시간 터미널 로그 추가
+                if (state.logs && state.logs.length > lastLogIndex) {
+                    const terminal = document.getElementById('terminal_body');
+                    for (let i = lastLogIndex; i < state.logs.length; i++) {
+                        const line = document.createElement('div');
+                        line.className = 'terminal-line';
+                        line.innerHTML = escapeHtml(state.logs[i]);
+                        terminal.appendChild(line);
+                    }
+                    lastLogIndex = state.logs.length;
+                    terminal.scrollTop = terminal.scrollHeight;
                 }
 
-                // 로그 업데이트
-                const term = document.getElementById('terminal_body');
-                let newHtml = '';
-                data.logs.forEach(log => {
-                    newHtml += `<div class="terminal-line">${escapeHtml(log)}</div>`;
-                });
-                term.innerHTML = newHtml;
-                term.scrollTop = term.scrollHeight;
-
-                if (data.finished) {
+                // 에러 발생 시
+                if (state.error) {
                     clearInterval(intervalId);
-                    document.getElementById('status_text').innerText = '모든 작업이 성공적으로 완료되었습니다!';
-                    document.getElementById('status_text').style.color = '#38ef7d';
+                    alert('프로세스 도중 오류가 발생했습니다: ' + state.error);
+                    enableAllControls();
+                    return;
+                }
+
+                // 완료 처리
+                if (state.finished) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                    document.getElementById('status_text').innerText = '정제 완료!';
                     
-                    if (data.error) {
-                        alert('작업 중 오류가 발생했습니다:\\n' + data.error);
+                    if (currentMode === 'upload' && downloadFilename) {
+                        document.getElementById('success_path').innerText = '클라우드 정제가 완료되었습니다. 아래 버튼을 눌러 결과 파일을 즉시 다운로드하세요!';
+                        document.getElementById('btn_download').href = `/download/${downloadFilename}`;
+                        document.getElementById('btn_download').style.display = 'inline-flex';
                     } else {
-                        alert('처리가 완료되었습니다!\\n결과 파일: ' + data.output_path);
+                        document.getElementById('success_path').innerText = '결과 파일 저장 완료: ' + state.output_path;
+                        document.getElementById('btn_download').style.display = 'none';
                     }
-                    resetUI();
+                    
+                    document.getElementById('success_area').style.display = 'block';
+                    enableAllControls();
                 }
             });
         }
 
-        function resetUI() {
-            const btn = document.getElementById('btn_run');
-            btn.className = "btn btn-large";
-            btn.disabled = false;
-            btn.innerText = "상품명 정제 시작";
+        function disableAllControls() {
+            document.getElementById('btn_upload_run').disabled = true;
+            document.getElementById('btn_path_run').disabled = true;
+            document.getElementById('btn_upload_run').innerText = "정제 진행 중...";
+            document.getElementById('btn_path_run').innerText = "정제 진행 중...";
+        }
+
+        function enableAllControls() {
+            document.getElementById('btn_upload_run').innerText = "선택된 파일 정제 시작";
+            document.getElementById('btn_path_run').innerText = "상품명 정제 시작";
+            if (selectedFile) {
+                document.getElementById('btn_upload_run').disabled = false;
+            }
+            document.getElementById('btn_path_run').disabled = false;
         }
 
         function escapeHtml(unsafe) {
@@ -935,6 +1150,58 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "업로드된 파일이 없습니다."})
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "선택된 파일명이 비어 있습니다."})
+        
+    if file and file.filename.endswith(('.xlsx', '.xls')):
+        temp_dir = tempfile.gettempdir()
+        input_filename = "upload_" + str(int(time.time())) + "_" + file.filename
+        input_path = os.path.join(temp_dir, input_filename)
+        file.save(input_path)
+        
+        output_filename = "cleaned_" + input_filename
+        output_path = os.path.join(temp_dir, output_filename)
+        
+        progress_state["current"] = 0
+        progress_state["total"] = 0
+        progress_state["percent"] = 0
+        progress_state["logs"] = []
+        progress_state["finished"] = False
+        progress_state["error"] = None
+        progress_state["output_path"] = output_path
+        
+        def run_thread():
+            sys.stdout = WebRedirector()
+            try:
+                def progress_cb(current, total):
+                    progress_state["current"] = current
+                    progress_state["total"] = total
+                    progress_state["percent"] = int((current / total) * 100)
+                    
+                process_excel(input_path, output_path, progress_callback=progress_cb)
+            except Exception as e:
+                progress_state["error"] = str(e)
+                print(f"\n[오류 발생] {e}")
+            finally:
+                sys.stdout = sys.__stdout__
+                progress_state["finished"] = True
+                
+        threading.Thread(target=run_thread, daemon=True).start()
+        return jsonify({"status": "started", "output_filename": output_filename})
+        
+    return jsonify({"status": "error", "message": "엑셀 파일만 업로드할 수 있습니다."})
+
+@app.route('/download/<filename>', methods=['GET'])
+def download_file(filename):
+    temp_dir = tempfile.gettempdir()
+    return send_from_directory(temp_dir, filename, as_attachment=True)
 
 @app.route('/start', methods=['POST'])
 def start_processing():
