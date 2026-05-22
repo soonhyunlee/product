@@ -89,9 +89,12 @@ def clean_product_name(text):
     # 1. 특정 괄호 쓰레기 제거
     text = clean_brackets_and_junk(text)
     
-    # 2. 제조사명 제거 (모델명 접두사와 결합된 하이픈 형태는 보호, 예: DAS-B5)
+    # 2. 제조사명 제거 (영어/숫자로만 이루어진 브랜드는 단어 경계 \b를 적용하여 3mm, 43mm 단위 손상 완벽 차단)
     for m in sorted(MANUFACTURERS, key=len, reverse=True):
-        pattern = re.compile(rf'{re.escape(m)}(?!\-[a-zA-Z0-9])', re.IGNORECASE)
+        if re.match(r'^[a-zA-Z0-9\s]+$', m):
+            pattern = re.compile(rf'\b{re.escape(m)}\b(?!\-[a-zA-Z0-9])', re.IGNORECASE)
+        else:
+            pattern = re.compile(rf'{re.escape(m)}(?!\-[a-zA-Z0-9])', re.IGNORECASE)
         text = pattern.sub(" ", text)
         
     # 3. 홍보성 키워드 제거
@@ -130,7 +133,8 @@ def clean_product_name(text):
 
 def refactor_to_concise_name(text):
     """
-    정제된 상품명을 9글자 초과할 경우 약 9자 내외로 핵심 특징을 나타내도록 압축합니다.
+    정제된 상품명을 9글자 초과할 경우 약 9자 내외로 핵심 한글 상품명 명사 위주로 스마트하게 압축합니다.
+    브랜드나 단순 규격 숫자만 남는 현상을 완벽하게 방지합니다.
     """
     if not isinstance(text, str) or not text:
         return ""
@@ -141,7 +145,7 @@ def refactor_to_concise_name(text):
     if len(text) <= 9:
         return text
 
-    # 1. 띄어쓰기 결합으로 글자 수 축소 (예: "양면 테이기" -> "양면테이프")
+    # 1. 띄어쓰기 결합으로 글자 수 축소
     compound_words = {
         "면 장갑": "면장갑",
         "황 테이프": "황테이프",
@@ -163,125 +167,96 @@ def refactor_to_concise_name(text):
     if len(text) <= 9:
         return text
 
-    # 2. 불필요한 서술성 수식어 및 불용 명사 제거
-    adjectives_to_remove = [
-        "대형", "소형", "중형", "고급", "일반", "간편", "안전", "강력", 
-        "다용도", "다목적", "어린이용", "가정용", "사무용", "단단한타입", "플러스", "손이편한", "삶아쓰는",
-        "19금", "핫멜트", "코팅제", "충진제", "만능", "큐티", "미니", "휴대용", "컬러", "단면", "양면",
-        "세로", "가로", "반려동물", "길이조절형", "길이조절", "부착형", "접이식", "모양", "발바닥",
-        "아로마", "케어"
-    ]
-    for adj in adjectives_to_remove:
-        text = re.sub(rf'\b{re.escape(adj)}\b|{re.escape(adj)}', '', text).strip()
-        
-    # 다중 공백 제거
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    if len(text) <= 9:
-        return text
+    # 2. 브랜드명/제조사명 먼저 제거 (핵심 한글 명사를 살리기 위해 배제)
+    brand_removed = text
+    for m in sorted(MANUFACTURERS, key=len, reverse=True):
+        if re.match(r'^[a-zA-Z0-9\s]+$', m):
+            pattern = re.compile(rf'\b{re.escape(m)}\b', re.IGNORECASE)
+        else:
+            pattern = re.compile(rf'{re.escape(m)}', re.IGNORECASE)
+        brand_removed = pattern.sub("", brand_removed)
 
-    # 3. 명사 결합 최적화 (대표 키워드 매핑)
-    synonyms = {
-        "화지양면테이프": "양면테이프",
-        "양면테이프 9346": "양면테이프",
-        "PE 보호 테이프": "PE테이프",
-        "PE보호테이프": "PE테이프",
-        "스트레치필름": "필름",
-        "레이저포인터": "포인터",
-        "테이프클리너": "클리너",
-        "청력보호구": "",
-        "귀덮개": "귀덮개",
-        "종이재단기": "재단기",
-        "투명보호캡": "보호캡",
-        "마루지킴이": "",
-        "마루 지킴이": "",
-        "접점부활세정제": "접점세정제",
-        "접점 부활 세정제": "접점세정제",
-        "접점부활 세정제": "접점세정제",
-        "어린이용 양손가위": "양손가위",
-        "양손가위": "양손가위",
-        "화일인덱스용": "인덱스용",
-        "물류관리용": "물류용",
-        "분류표기용": "분류용",
-        "타이어 광택": "타이어광택제",
-        "타이어광택": "타이어광택제",
-        "틈새 메꾸미": "틈새메꾸미",
-        "틈새메꾸미": "틈새메꾸미",
-        "피오르니": ""
-    }
-    for k, v in synonyms.items():
-        text = text.replace(k, v)
-        
-    # 4. 규격 및 수량 제거/축약
-    text = text.replace("개입", "개").replace("매입", "매")
-    text = text.replace("헤드폰형", "").replace("돌돌이", "").replace("사이즈", "")
-    
-    # 1p, 10p, 20매 등의 수량 표현 보존용 추출
-    qty_match = re.search(r'\b\d+(?:p|P|개|매|ml|ML|M|m|mm|MM)\b', text)
-    qty_str = qty_match.group(0) if qty_match else ""
-    
-    # 모델명/숫자코드 추출 (예: L-1515, LP-900K, 3958)
-    model_match = re.search(r'\b[a-zA-Z0-9]+-[a-zA-Z0-9]+\b|\b[a-zA-Z]+[0-9]+[a-zA-Z]*\b|\b[0-9]{3,}\b', text)
-    model_str = model_match.group(0) if model_match else ""
+    # 3. 모델명/규격/수량 추출 및 보존 처리
+    # 수량 패턴 (예: 10pcs, 20매, 50mm, 50M)
+    qty_patterns = re.findall(r'\b\d+(?:pcs|PCS|p|P|매|ml|ML|M|m|mm|MM|W|w|V|v|개)\b', text)
+    qty_str = " ".join(qty_patterns) if qty_patterns else ""
 
-    # 원본에서 수량 및 모델코드를 잠시 분리하여 순수 텍스트만 정제
-    pure_text = text
-    if qty_str:
-        pure_text = pure_text.replace(qty_str, "")
-    if model_str:
-        pure_text = pure_text.replace(model_str, "")
-    
-    # 특수문자 찌꺼기 제거
-    pure_text = re.sub(r'[\(\)\[\]\{\}\/]+', ' ', pure_text)
-    pure_text = re.sub(r'\s+', ' ', pure_text).strip()
-    
-    if len(pure_text) <= 9:
-        # 단어 조립
-        final_text = pure_text
-        if model_str:
-            final_text += " " + model_str
-        if qty_str:
-            final_text += " " + qty_str
-        final_text = re.sub(r'\s+', ' ', final_text).strip()
-        if len(final_text) <= 10:
-            return final_text
+    # 모델명 패턴 (예: GST8000E, SS24, X1A, LS1040S)
+    model_patterns = re.findall(r'\b[a-zA-Z0-9]+-[a-zA-Z0-9]+\b|\b[a-zA-Z]+[0-9]+[a-zA-Z]*\b', text)
+    num_codes = re.findall(r'\b[0-9]{3,}\b', text)
+    all_models = model_patterns + [n for n in num_codes if n not in qty_patterns]
+    model_str = " ".join(all_models) if all_models else ""
 
-    # 5. [핵심 알고리즘] 단어가 여러 개인 경우 뒤쪽 명사 중심으로 추출하여 약 5자 내외로 맞춤
-    words = pure_text.split()
-    if len(words) >= 2:
-        # 뒤쪽의 핵심 명사 2개를 결합
-        last_two = words[-2:]
-        candidate = " ".join(last_two)
+    # 4. 한글 단어(핵심 상품명 명사)만 정밀 추출
+    words = brand_removed.split()
+    hangul_words = []
+    
+    # 단순 부속품, 수식 보조어, 포함 관계 키워드를 필터링하여 순수 핵심 상품명만 도출 (접미사 endswith 매칭으로 오동작 방지)
+    exclude_suffixes = ['포함', '사용', '후속', '기능', '대응', '증정', '사은품', '용', '재질', '베어툴', '본체']
+    
+    for w in words:
+        # 단어에서 수량이나 모델 패턴은 제외
+        if w in qty_patterns or any(m in w for m in all_models):
+            continue
+        # 한글이 포함된 단어만 핵심 한글 명사로 채택
+        if re.search(r'[가-힣]', w):
+            # 수식어 제거
+            w_clean = re.sub(r'대형|소형|중형|고급|일반|다용도|다목적|휴대용|부착형|접이식', '', w)
+            if any(w_clean.endswith(s) for s in exclude_suffixes):
+                continue
+            if w_clean.strip():
+                hangul_words.append(w_clean.strip())
+
+    # 만약 한글 단어가 아예 없다면, 영숫자 단어라도 살림
+    if not hangul_words:
+        hangul_words = [w for w in words if w not in qty_patterns and not any(m in w for m in all_models)]
+
+    # 5. 핵심 단어 조립 (한국어 문법 상 핵심 명사는 항상 뒤쪽에 옵니다!)
+    core_name = ""
+    if len(hangul_words) >= 2:
+        last_word = hangul_words[-1]
+        second_last = hangul_words[-2]
         
-        # 만약 여전히 10자를 초과하면 마지막 1개 단어만 추출
-        if len(candidate) > 10:
-            candidate = words[-1]
-            
-        pure_text = candidate
-    else:
-        # 단어가 1개인 경우 글자 자르기
-        if len(pure_text) > 9:
-            if "혼유방지" in pure_text:
-                pure_text = "혼유방지"
-            elif "장바구니" in pure_text:
-                pure_text = "장바구니"
+        # 중복 방지 (예: 헤라 마감용헤라 -> 헤라가 겹침)
+        if second_last in last_word:
+            core_name = last_word
+        else:
+            combined = f"{second_last} {last_word}"
+            if len(combined) <= 8:
+                core_name = combined
             else:
-                pure_text = pure_text[:9]
+                core_name = last_word
+    elif len(hangul_words) == 1:
+        core_name = hangul_words[0]
+    else:
+        core_name = text[:9]
 
-    # 최종 9자 조합 재조립
-    final_text = pure_text
-    # 모델명이나 핵심 기호 코드가 있다면 붙여줌 (최대 12자 내외 보존)
-    if model_str:
-        final_text += " " + model_str
-    if qty_str: # 사용자의 명시적 요청으로 개수/수량 단위는 언제나 무조건 보존합니다!
-        final_text += " " + qty_str
-        
+    # 6. 최종 9자 내외 조립 (한글 핵심명 + 모델명 + 수량)
+    final_parts = [core_name]
+    if model_str and model_str not in core_name:
+        final_parts.append(model_str)
+    if qty_str and qty_str not in core_name:
+        final_parts.append(qty_str)
+
+    final_text = " ".join(final_parts)
     final_text = re.sub(r'\s+', ' ', final_text).strip()
-    
-    # 마지막 글자 수 안전 차단 (수량이나 모델명이 붙었을 때는 안전 차단을 건너뜁니다!)
-    if len(final_text) > 10 and not model_str and not qty_str:
-        final_text = final_text[:9].strip()
-        
+
+    # 만약 조립 결과가 9자를 초과하는 경우, 수량/모델명이 들어가 있다면 최대 13자까지는 허용하되,
+    # 그렇지 않다면 핵심 명사 위주로 9자 이하로 타이트하게 자릅니다.
+    if len(final_text) > 9:
+        if not model_str and not qty_str:
+            final_text = final_text[:9].strip()
+        else:
+            # 수량이나 모델이 있다면 핵심명만 5자 내외로 다시 단축해서 전체 길이를 11자 이내로 맞춤
+            short_core = core_name.split()[0][:5]
+            final_parts = [short_core]
+            if model_str:
+                final_parts.append(model_str)
+            if qty_str:
+                final_parts.append(qty_str)
+            final_text = " ".join(final_parts)
+            final_text = re.sub(r'\s+', ' ', final_text).strip()
+
     return final_text
 
 def clean_scraped_title(scraped_title):
