@@ -22,12 +22,22 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 제거할 제조업체명/브랜드명 목록 (길이순 정렬하여 긴 단어가 먼저 매칭되도록 함)
 MANUFACTURERS = [
+    # 기존 대기업 브랜드
     "삼성전자공식대리점", "삼성전자공식", "삼성전자", "LG전자공식", "LG전자", 
     "소니코리아", "Sony", "소니", "Apple", "애플", "샤오미", "Xiaomi", 
     "다이슨", "Dyson", "필립스", "Philips", "HP", "에이치피", "Dell", "델", 
     "Lenovo", "레노버", "한성컴퓨터", "한성", "Asus", "에이수스", "Acer", "에이서", 
     "MSI", "엠에스아이", "삼성", "LG", "엘지", "쓰리엠", "3M", "폼텍라벨", "폼텍", "다스", "DAS",
-    "오공", "일신", "중외"
+    "오공", "일신", "중외",
+    
+    # 신규 수공구 / 산업 전동공구 관련 제조사/브랜드 대거 확충
+    "밀워키", "Milwaukee", "디월트", "DeWalt", "dewalt", "마끼다", "Makita", "makita", 
+    "보쉬", "Bosch", "BOSCH", "계양전기", "계양", "Keyang", "스탠리", "Stanley", "아네스", "ANEX",
+    "대영톱", "대영", "백마", "ARS", "MKK", "타지마", "Tajima", "세신버팔로", "세신", "주피터",
+    "썬키", "SUNKEY", "로보스터", "LOBSTER", "크레토스", "스마토", "SMATO", "화신", "시지코",
+    "크니펙스", "KNIPEX", "어윈", "irwin", "IRWIN", "베셀", "VESSEL", "vessel", "툴스타",
+    "이지툴", "한도", "동해", "용수", "평화", "태양", "제일", "경인", "다이아", "용진",
+    "KPT", "UDT", "아임삭", "aimsak", "AIMSAK"
 ]
 
 # 제거할 광고성 문구, 혜택, 불필요한 태그/접두사/접미사
@@ -395,10 +405,10 @@ def process_excel(input_path, output_path, progress_callback=None):
             cleaned_result = clean_product_name(prod_name_a)
             print(f"   -> [원본 데이터 정제(Fallback)] 적용: {cleaned_result}")
             
-        # C열 정제된 상품명을 10자 이내로 엄격하게 압축 및 축약합니다.
-        concise_result = refactor_to_concise_name(cleaned_result)
-        print(f"   => [10자 이내 최적화 압축 적용]: {cleaned_result} -> {concise_result} (길이: {len(concise_result)}자)")
-        cleaned_result = concise_result
+        # C열 정제된 상품명을 이커머스 최적화 전문가 알고리즘으로 정제 및 축약합니다.
+        optimized_result = refactor_to_concise_name(cleaned_result)
+        print(f"   => [이커머스 상품명 최적화 적용]: {cleaned_result} -> {optimized_result} (길이: {len(optimized_result)}자)")
+        cleaned_result = optimized_result
             
         df.at[idx, col_c] = cleaned_result
         if progress_callback:
