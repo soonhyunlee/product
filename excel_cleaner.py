@@ -143,14 +143,12 @@ def clean_product_name(text):
 
 def refactor_to_concise_name(text):
     """
-    이커머스 최적화 전문가 알고리즘:
-    브랜드와 제조사를 완벽하게 배제하고, (핵심 상품명 + 모델명/스펙) 조합으로 
-    이커머스 검색 최적화(SEO) 및 시각적 매력도를 100% 극대화한 최고의 상품명을 생성합니다.
+    이커머스 최적화 전문가: 브랜드/제조사 제외 및 (최적화된 상품명 + 모델명 + 몇개) 포맷 적용
     """
     if not isinstance(text, str) or not text:
         return ""
-    
-    # 1. 브랜드명/제조사명 철저 배제
+
+    # 1. 브랜드/제조사명 철저 배제
     brand_removed = text
     for m in sorted(MANUFACTURERS, key=len, reverse=True):
         if re.match(r'^[a-zA-Z0-9\s]+$', m):
@@ -159,25 +157,44 @@ def refactor_to_concise_name(text):
             pattern = re.compile(rf'{re.escape(m)}', re.IGNORECASE)
         brand_removed = pattern.sub("", brand_removed)
 
-    # 2. 단어 분리 후 무의미한 부속품/소모품/대응 키워드 필터링
     words = brand_removed.split()
-    optimized_words = []
+    
+    # 2. 수량/수량단어(몇개, 예: 10pcs, 1p, 5개, 2매, 1set) 추출 및 본문 분리
+    qty_words = []
+    other_words = []
+    
+    # 수량 패턴: 숫자 + pcs, p, 개, 매, 세트, set, 줄 등 (대소문자 구분 없음)
+    qty_regex = re.compile(r'^\d+\s*(?:pcs|PCS|p|P|개|매|세트|set|SET|줄|Pcs|pcs)$', re.IGNORECASE)
     
     exclude_suffixes = ['포함', '사용', '후속', '대응', '증정', '사은품', '재질', '베어툴', '본체']
     
     for w in words:
         w_clean = re.sub(r'[^\w]', '', w)
+        
         # 단순 사양/액세서리 접미사 단어 제거
         if any(w_clean.endswith(s) for s in exclude_suffixes):
             continue
-        optimized_words.append(w)
+            
+        if qty_regex.match(w_clean):
+            qty_words.append(w)
+        else:
+            other_words.append(w)
+
+    if not other_words:
+        other_words = words
+
+    # 3. 최적화된 상품명 + 모델명/스펙 조립
+    core_spec_text = " ".join(other_words)
+    core_spec_text = re.sub(r'\s+', ' ', core_spec_text).strip()
+    
+    # 4. 수량 정보가 존재할 경우 가장 우측에 배치하여 (상품명 + 모델명 + 몇개) 구조 완성
+    if qty_words:
+        qty_suffix = " ".join(qty_words)
+        final_text = f"{core_spec_text} {qty_suffix}"
+    else:
+        final_text = core_spec_text
         
-    if not optimized_words:
-        optimized_words = words
-        
-    final_text = " ".join(optimized_words)
-    final_text = re.sub(r'\s+', ' ', final_text).strip()
-    return final_text
+    return re.sub(r'\s+', ' ', final_text).strip()
 
 def clean_scraped_title(scraped_title):
     """
