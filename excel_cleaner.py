@@ -130,18 +130,18 @@ def clean_product_name(text):
 
 def refactor_to_concise_name(text):
     """
-    정제된 상품명을 6글자 초과할 경우 약 7자 내외로 핵심 특징을 나타내도록 압축합니다.
+    정제된 상품명을 9글자 초과할 경우 약 9자 내외로 핵심 특징을 나타내도록 압축합니다.
     """
     if not isinstance(text, str) or not text:
         return ""
     
     text = text.strip()
     
-    # 6글자 이하인 경우 압축 불필요
-    if len(text) <= 6:
+    # 9글자 이하인 경우 압축 불필요
+    if len(text) <= 9:
         return text
-        
-    # 1. 띄어쓰기 결합으로 글자 수 축소 (예: "면 장갑" -> "면장갑")
+
+    # 1. 띄어쓰기 결합으로 글자 수 축소 (예: "양면 테이프" -> "양면테이프")
     compound_words = {
         "면 장갑": "면장갑",
         "황 테이프": "황테이프",
@@ -160,25 +160,27 @@ def refactor_to_concise_name(text):
     for k, v in compound_words.items():
         text = text.replace(k, v)
         
-    if len(text) <= 7:
+    if len(text) <= 9:
         return text
 
-    # 2. 불필요한 서술성 수식어 정밀 제거
+    # 2. 불필요한 서술성 수식어 및 불용 명사 제거
     adjectives_to_remove = [
         "대형", "소형", "중형", "고급", "일반", "간편", "안전", "강력", 
         "다용도", "다목적", "어린이용", "가정용", "사무용", "단단한타입", "플러스", "손이편한", "삶아쓰는",
-        "19금", "핫멜트", "코팅제", "충진제"
+        "19금", "핫멜트", "코팅제", "충진제", "만능", "큐티", "미니", "휴대용", "컬러", "단면", "양면",
+        "세로", "가로", "반려동물", "길이조절형", "길이조절", "부착형", "접이식", "모양", "발바닥",
+        "아로마", "케어"
     ]
     for adj in adjectives_to_remove:
-        text = text.replace(adj, "").strip()
+        text = re.sub(rf'\b{re.escape(adj)}\b|{re.escape(adj)}', '', text).strip()
         
     # 다중 공백 제거
     text = re.sub(r'\s+', ' ', text).strip()
     
-    if len(text) <= 8:
+    if len(text) <= 9:
         return text
 
-    # 3. 핵심 단어 축약어 및 명사 대체 사전 (7자 최적화)
+    # 3. 명사 결합 최적화 (대표 키워드 매핑)
     synonyms = {
         "화지양면테이프": "양면테이프",
         "양면테이프 9346": "양면테이프",
@@ -204,26 +206,83 @@ def refactor_to_concise_name(text):
         "타이어 광택": "타이어광택제",
         "타이어광택": "타이어광택제",
         "틈새 메꾸미": "틈새메꾸미",
-        "틈새메꾸미": "틈새메꾸미"
+        "틈새메꾸미": "틈새메꾸미",
+        "피오르니": ""
     }
     for k, v in synonyms.items():
         text = text.replace(k, v)
         
-    # 다중 공백 및 무의미한 남은 수식어 기호 정리
-    text = text.replace("헤드폰형", "").replace("돌돌이", "")
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # 4. 규격 및 수량 축약 (예: "25mm x 10M" -> "25mm", "2개입" -> "2개")
+    # 4. 규격 및 수량 제거/축약
     text = text.replace("개입", "개").replace("매입", "매")
-    text = re.sub(r'x\s*\d+[a-zA-Z가-힣]+\s*x\s*\d+[a-zA-Z가-힣]+', '', text)
-    text = re.sub(r'x\s*\d+[a-zA-Z가-힣]+', '', text)
-    text = text.replace("사이즈", "").replace("리필", "리필")
+    text = text.replace("헤드폰형", "").replace("돌돌이", "").replace("사이즈", "")
     
-    # 모델명 하이픈 뒤의 잉여 공백 제거
-    text = re.sub(r'\s*-\s*', '-', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    # 1p, 10p, 20매 등의 수량 표현 보존용 추출
+    qty_match = re.search(r'\b\d+(?:p|P|개|매|ml|ML|M|m|mm|MM)\b', text)
+    qty_str = qty_match.group(0) if qty_match else ""
     
-    return text
+    # 모델명/숫자코드 추출 (예: L-1515, LP-900K, 3958)
+    model_match = re.search(r'\b[a-zA-Z0-9]+-[a-zA-Z0-9]+\b|\b[a-zA-Z]+[0-9]+[a-zA-Z]*\b|\b[0-9]{3,}\b', text)
+    model_str = model_match.group(0) if model_match else ""
+
+    # 원본에서 수량 및 모델코드를 잠시 분리하여 순수 텍스트만 정제
+    pure_text = text
+    if qty_str:
+        pure_text = pure_text.replace(qty_str, "")
+    if model_str:
+        pure_text = pure_text.replace(model_str, "")
+    
+    # 특수문자 찌꺼기 제거
+    pure_text = re.sub(r'[\(\)\[\]\{\}\/]+', ' ', pure_text)
+    pure_text = re.sub(r'\s+', ' ', pure_text).strip()
+    
+    if len(pure_text) <= 9:
+        # 단어 조립
+        final_text = pure_text
+        if model_str:
+            final_text += " " + model_str
+        if qty_str:
+            final_text += " " + qty_str
+        final_text = re.sub(r'\s+', ' ', final_text).strip()
+        if len(final_text) <= 10:
+            return final_text
+
+    # 5. [핵심 알고리즘] 단어가 여러 개인 경우 뒤쪽 명사 중심으로 추출하여 약 5자 내외로 맞춤
+    words = pure_text.split()
+    if len(words) >= 2:
+        # 뒤쪽의 핵심 명사 2개를 결합 (예: "고양이발 자" -> "고양이발 자", "우드 클립보드" -> "우드 클립보드")
+        last_two = words[-2:]
+        candidate = " ".join(last_two)
+        
+        # 만약 여전히 10자를 초과하면 마지막 1개 단어만 추출
+        if len(candidate) > 10:
+            candidate = words[-1]
+            
+        pure_text = candidate
+    else:
+        # 단어가 1개인 경우 글자 자르기 (예: "주유혼유방지" -> "혼유방지")
+        if len(pure_text) > 9:
+            if "혼유방지" in pure_text:
+                pure_text = "혼유방지"
+            elif "장바구니" in pure_text:
+                pure_text = "장바구니"
+            else:
+                pure_text = pure_text[:9]
+
+    # 최종 9자 조합 재조립
+    final_text = pure_text
+    # 모델명이나 핵심 기호 코드가 있다면 붙여줌 (최대 12자 내외 보존)
+    if model_str:
+        final_text += " " + model_str
+    if qty_str: # 사용자의 명시적 요청으로 개수/수량 단위는 언제나 무조건 보존합니다!
+        final_text += " " + qty_str
+        
+    final_text = re.sub(r'\s+', ' ', final_text).strip()
+    
+    # 마지막 글자 수 안전 차단 (수량이나 모델명이 붙었을 때는 안전 차단을 건너뜁니다!)
+    if len(final_text) > 10 and not model_str and not qty_str:
+        final_text = final_text[:9].strip()
+        
+    return final_text
 
 def clean_scraped_title(scraped_title):
     """
@@ -287,22 +346,38 @@ def scrape_product_title(url):
         
         # HTML 바이트를 먼저 디코딩하여 문자열로 변환 (BeautifulSoup의 오독 방지)
         html_text = None
-        apparent = response.apparent_encoding
-        if apparent and 'ptcp' not in apparent.lower(): # ptcp(Cyrillic) 오감지 회피
+        
+        # 1. 헤더에 charset이 선언되어 있는 경우 우선 사용
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "charset=" in content_type:
             try:
-                html_text = response.content.decode(apparent, errors='replace')
+                header_encoding = response.encoding
+                if header_encoding and 'iso-8859-1' not in header_encoding.lower():
+                    html_text = response.content.decode(header_encoding)
             except Exception:
                 pass
-                
-        # apparent_encoding 실패 혹은 ptcp인 경우 utf-8 및 euc-kr/cp949 순차 시도
+
+        # 2. apparent_encoding이 한국어/유니코드 계열인 경우에만 신뢰 (Cyrillic, Western 등 배제)
         if not html_text:
-            for encoding in ['utf-8', 'euc-kr', 'cp949']:
+            apparent = response.apparent_encoding
+            if apparent:
+                apparent_lower = apparent.lower()
+                if any(enc in apparent_lower for enc in ['utf-8', 'utf_8', 'utf8', 'euc-kr', 'euckr', 'cp949', 'cp-949']):
+                    try:
+                        html_text = response.content.decode(apparent)
+                    except Exception:
+                        pass
+
+        # 3. 순차 디코딩 테스트 (가장 안전하고 검증된 방식)
+        if not html_text:
+            for encoding in ['utf-8', 'cp949', 'euc-kr']:
                 try:
                     html_text = response.content.decode(encoding)
                     break
                 except UnicodeDecodeError:
                     continue
-                    
+
+        # 4. 마지막 보루: UTF-8 강제 변환
         if not html_text:
             html_text = response.content.decode('utf-8', errors='replace')
             
@@ -419,9 +494,9 @@ def process_excel(input_path, output_path, progress_callback=None):
         cleaned_result = ""
         scraped_title = None
         
-        # 상품명이 7자 이하인 경우 리팩토링 건너뜀 (원본 그대로 보존)
-        if len(prod_name_a) <= 7:
-            print("   [건너뜀] 상품명이 7자 이하이므로 정제 처리를 건너뛰고 그대로 보존합니다.")
+        # 상품명이 9자 이하인 경우 리팩토링 건너뜀 (원본 그대로 보존)
+        if len(prod_name_a) <= 9:
+            print("   [건너뜀] 상품명이 9자 이하이므로 정제 처리를 건너뛰고 그대로 보존합니다.")
             cleaned_result = prod_name_a
         else:
             # URL이 올바르고 접속 가능한 경우 크롤링 시도
@@ -459,10 +534,10 @@ def process_excel(input_path, output_path, progress_callback=None):
                 cleaned_result = clean_product_name(prod_name_a)
                 print(f"   -> [원본 데이터 정제(Fallback)] 적용: {cleaned_result}")
             
-        # 정제 결과명이 6글자를 초과하는 경우 7자 내외로 상품특징 최적화 압축 진행
-        if len(cleaned_result) > 6:
+        # 정제 결과명이 9글자를 초과하는 경우 9자 내외로 상품특징 최적화 압축 진행
+        if len(cleaned_result) > 9:
             concise_result = refactor_to_concise_name(cleaned_result)
-            print(f"   => [7자 최적화 압축 적용]: {cleaned_result} -> {concise_result} (길이: {len(concise_result)}자)")
+            print(f"   => [9자 최적화 압축 적용]: {cleaned_result} -> {concise_result} (길이: {len(concise_result)}자)")
             cleaned_result = concise_result
             
         # 결과값 기입
@@ -502,10 +577,20 @@ if __name__ == "__main__":
         def write(self, string):
             if string.strip():
                 progress_state["logs"].append(string.strip())
-            self.original_stdout.write(string)
+            try:
+                self.original_stdout.write(string)
+            except Exception:
+                try:
+                    # Windows CP949 인코딩 불가능 문자 대체 처리
+                    self.original_stdout.write(string.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding))
+                except Exception:
+                    pass
 
         def flush(self):
-            self.original_stdout.flush()
+            try:
+                self.original_stdout.flush()
+            except Exception:
+                pass
 
     HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
