@@ -552,47 +552,52 @@ def process_excel(input_path, output_path, progress_callback=None):
     print(f"처리가 완료되었습니다! 신규 파일이 저장되었습니다: {output_path}")
     print("=" * 60)
 
-if __name__ == "__main__":
-    import threading
-    import time
-    import webbrowser
-    from flask import Flask, render_template_string, jsonify, request
+import sys
+import threading
+import time
+import webbrowser
+from flask import Flask, render_template_string, jsonify, request
+import os
+import pandas as pd
+import requests
+import re
+from bs4 import BeautifulSoup
 
-    app = Flask(__name__)
+app = Flask(__name__)
 
-    progress_state = {
-        "current": 0,
-        "total": 0,
-        "percent": 0,
-        "logs": [],
-        "finished": False,
-        "error": None,
-        "output_path": ""
-    }
+progress_state = {
+    "current": 0,
+    "total": 0,
+    "percent": 0,
+    "logs": [],
+    "finished": False,
+    "error": None,
+    "output_path": ""
+}
 
-    class WebRedirector:
-        def __init__(self):
-            self.original_stdout = sys.stdout
+class WebRedirector:
+    def __init__(self):
+        self.original_stdout = sys.stdout
 
-        def write(self, string):
-            if string.strip():
-                progress_state["logs"].append(string.strip())
+    def write(self, string):
+        if string.strip():
+            progress_state["logs"].append(string.strip())
+        try:
+            self.original_stdout.write(string)
+        except Exception:
             try:
-                self.original_stdout.write(string)
-            except Exception:
-                try:
-                    # Windows CP949 인코딩 불가능 문자 대체 처리
-                    self.original_stdout.write(string.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding))
-                except Exception:
-                    pass
-
-        def flush(self):
-            try:
-                self.original_stdout.flush()
+                # Windows CP949 인코딩 불가능 문자 대체 처리
+                self.original_stdout.write(string.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding))
             except Exception:
                 pass
 
-    HTML_TEMPLATE = """<!DOCTYPE html>
+    def flush(self):
+        try:
+            self.original_stdout.flush()
+        except Exception:
+            pass
+
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -615,109 +620,101 @@ if __name__ == "__main__":
             max-width: 800px;
             background: #16161a;
             border: 1px solid #282830;
-            border-radius: 16px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            background-image: radial-gradient(at top left, rgba(56, 239, 125, 0.03) 0%, transparent 50%),
+                              radial-gradient(at bottom right, rgba(17, 153, 142, 0.03) 0%, transparent 50%);
         }
-        .header {
-            margin-bottom: 25px;
-            border-bottom: 1px solid #282830;
-            padding-bottom: 20px;
-        }
-        .header h1 {
-            font-size: 24px;
+        h1 {
+            font-size: 28px;
             font-weight: 700;
-            color: #00F2FE;
-            margin: 0;
+            margin-top: 0;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #38ef7d 0%, #11998e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .header p {
+        .subtitle {
             color: #8c8c9a;
-            font-size: 14px;
-            margin: 8px 0 0 0;
+            font-size: 15px;
+            margin-bottom: 35px;
+            line-height: 1.6;
         }
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }
-        .form-group label {
+        label {
             display: block;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            color: #e2e2e9;
+            color: #a1a1aa;
             margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .input-group {
-            display: flex;
-            gap: 10px;
-        }
-        .input-group input {
-            flex: 1;
-            background: #0f0f12;
-            border: 1px solid #282830;
-            color: #e2e2e9;
-            padding: 12px 16px;
-            border-radius: 8px;
+        input[type="text"] {
+            width: 100%;
+            padding: 14px 16px;
+            background: #09090b;
+            border: 1px solid #202026;
+            border-radius: 10px;
+            color: #f4f4f5;
             font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s;
+            box-sizing: border-box;
+            transition: all 0.2s;
         }
-        .input-group input:focus {
-            border-color: #00F2FE;
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #11998e;
+            box-shadow: 0 0 0 2px rgba(17, 153, 142, 0.2);
         }
         .btn {
-            background: #2563eb;
-            color: white;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: #05140e;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 14px;
+            border-radius: 10px;
+            padding: 14px 28px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
+            transition: all 0.2s;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
         }
         .btn:hover {
-            background: #1d4ed8;
+            opacity: 0.95;
+            transform: translateY(-1px);
         }
-        .btn:active {
-            transform: scale(0.98);
-        }
-        .btn-large {
-            width: 100%;
-            padding: 15px;
-            font-size: 16px;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            color: #0f0f12;
-            font-weight: 700;
-            box-shadow: 0 4px 15px rgba(0, 242, 254, 0.2);
-            margin-top: 10px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
-        }
-        .btn-large:hover {
-            opacity: 0.9;
-        }
-        .btn-disabled {
-            background: #2c2c35 !important;
-            color: #5c5c6a !important;
+        .btn:disabled {
+            background: #27272a;
+            color: #71717a;
             cursor: not-allowed;
-            box-shadow: none !important;
-            opacity: 0.7 !important;
+            transform: none;
         }
         .progress-container {
-            margin-top: 30px;
+            margin-top: 35px;
             display: none;
         }
         .progress-header {
             display: flex;
             justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
             font-size: 14px;
-            margin-bottom: 8px;
+        }
+        .progress-status {
+            font-weight: 500;
+            color: #38ef7d;
         }
         .progress-bar-bg {
+            width: 100%;
             height: 12px;
             background: #202026;
             border-radius: 6px;
@@ -746,14 +743,8 @@ if __name__ == "__main__":
             border-bottom: 1px solid #202026;
             display: flex;
             align-items: center;
-            gap: 8px;
         }
-        .terminal-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #ff5f56;
-        }
+        .terminal-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff5f56; margin-right: 6px; }
         .terminal-dot.yellow { background: #ffbd2e; }
         .terminal-dot.green { background: #27c93f; }
         .terminal-body {
@@ -763,55 +754,81 @@ if __name__ == "__main__":
             font-family: 'Consolas', monospace;
             font-size: 13px;
             line-height: 1.6;
-            color: #8af294;
+            color: #38ef7d;
         }
         .terminal-line {
             margin-bottom: 6px;
             white-space: pre-wrap;
         }
+        .success-box {
+            background: rgba(56, 239, 125, 0.05);
+            border: 1px solid rgba(56, 239, 125, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: center;
+            display: none;
+        }
+        .success-title {
+            color: #38ef7d;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .success-path {
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            color: #a1a1aa;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>⚡ AI PRODUCT NAME REFACTORER</h1>
-            <p>상세페이지 크롤링 분석 및 상품명 7자 초간결 최적화 정제 솔루션 (Web Interface)</p>
-        </div>
-        
-        <div class="form-group">
-            <label>입력 엑셀 파일 경로</label>
-            <div class="input-group">
-                <input type="text" id="input_path" value="c:\\product\\TEST.xlsx" placeholder="예: c:\\product\\TEST.xlsx">
-            </div>
+        <h1>✨ AI 상품명 초간결 정제 솔루션</h1>
+        <div class="subtitle">
+            스마트스토어/쿠팡 등록을 위해 불필요한 단어를 제거하고, <strong>한글 기준 9글자 이내</strong> 및 <strong>수량(1p, 20매 등) 보존</strong> 조건에 맞춰 핵심 단어를 지능형으로 축약합니다.
         </div>
 
         <div class="form-group">
-            <label>정제 후 저장할 신규 파일명 경로</label>
-            <div class="input-group">
-                <input type="text" id="output_path" value="c:\\product\\TEST_cleaned.xlsx" placeholder="예: c:\\product\\TEST_cleaned.xlsx">
-            </div>
+            <label for="input_path">입력 엑셀 파일 경로 (A열: 상품명, B열: URL)</label>
+            <input type="text" id="input_path" value="c:\\product\\TEST.xlsx" placeholder="예: C:\\product\\TEST.xlsx">
         </div>
 
-        <button class="btn btn-large" id="btn_run" onclick="startProcessing()">상품명 정제 시작</button>
+        <div class="form-group">
+            <label for="output_path">결과 엑셀 파일 저장 경로 (C열 자동 추가)</label>
+            <input type="text" id="output_path" value="c:\\product\\TEST_cleaned.xlsx" placeholder="예: C:\\product\\TEST_cleaned.xlsx">
+        </div>
 
-        <div class="progress-container" id="progress_section">
+        <button id="btn_run" class="btn" onclick="startRun()">
+            <span>상품명 정제 시작</span>
+        </button>
+
+        <!-- 진행바 영역 -->
+        <div class="progress-container" id="progress_area">
             <div class="progress-header">
-                <span id="status_text">대기 중...</span>
+                <span class="progress-status" id="status_text">정제 프로세스 준비 중...</span>
                 <span id="percent_text">0%</span>
             </div>
             <div class="progress-bar-bg">
-                <div class="progress-bar-fill" id="progress_fill"></div>
+                <div class="progress-bar-fill" id="bar_fill"></div>
             </div>
         </div>
 
-        <div class="terminal-container" id="terminal_section">
+        <!-- 터미널 모니터링 영역 -->
+        <div class="terminal-container" id="terminal_area">
             <div class="terminal-header">
                 <div class="terminal-dot"></div>
                 <div class="terminal-dot yellow"></div>
                 <div class="terminal-dot green"></div>
-                <span>실시간 정제 모니터링 로그</span>
+                <span style="margin-left: 8px; font-weight: 500;">Engine Monitor Logs</span>
             </div>
             <div class="terminal-body" id="terminal_body"></div>
+        </div>
+
+        <!-- 최종 완료 영역 -->
+        <div class="success-box" id="success_area">
+            <div class="success-title">🎉 모든 상품명 정제가 완료되었습니다!</div>
+            <div class="success-path" id="success_path">결과 파일: c:\\product\\TEST_cleaned.xlsx</div>
         </div>
     </div>
 
@@ -915,53 +932,60 @@ if __name__ == "__main__":
 </body>
 </html>"""
 
-    @app.route('/')
-    def index():
-        return render_template_string(HTML_TEMPLATE)
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
 
-    @app.route('/start', methods=['POST'])
-    def start_processing():
-        data = request.json
-        in_path = data.get('input_path')
-        out_path = data.get('output_path')
+@app.route('/start', methods=['POST'])
+def start_processing():
+    data = request.json
+    in_path = data.get('input_path')
+    out_path = data.get('output_path')
+    
+    if not in_path or not os.path.exists(in_path):
+        return jsonify({"status": "error", "message": "입력 파일이 존재하지 않습니다."})
         
-        if not in_path or not os.path.exists(in_path):
-            return jsonify({"status": "error", "message": "입력 파일이 존재하지 않습니다."})
-            
-        progress_state["current"] = 0
-        progress_state["total"] = 0
-        progress_state["percent"] = 0
-        progress_state["logs"] = []
-        progress_state["finished"] = False
-        progress_state["error"] = None
-        progress_state["output_path"] = out_path
-        
-        def run_thread():
-            sys.stdout = WebRedirector()
-            try:
-                def progress_cb(current, total):
-                    progress_state["current"] = current
-                    progress_state["total"] = total
-                    progress_state["percent"] = int((current / total) * 100)
-                    
-                process_excel(in_path, out_path, progress_callback=progress_cb)
-            except Exception as e:
-                progress_state["error"] = str(e)
-                print(f"\n[오류 발생] {e}")
-            finally:
-                sys.stdout = sys.__stdout__
-                progress_state["finished"] = True
+    progress_state["current"] = 0
+    progress_state["total"] = 0
+    progress_state["percent"] = 0
+    progress_state["logs"] = []
+    progress_state["finished"] = False
+    progress_state["error"] = None
+    progress_state["output_path"] = out_path
+    
+    def run_thread():
+        sys.stdout = WebRedirector()
+        try:
+            def progress_cb(current, total):
+                progress_state["current"] = current
+                progress_state["total"] = total
+                progress_state["percent"] = int((current / total) * 100)
                 
-        threading.Thread(target=run_thread, daemon=True).start()
-        return jsonify({"status": "started"})
+            process_excel(in_path, out_path, progress_callback=progress_cb)
+        except Exception as e:
+            progress_state["error"] = str(e)
+            print(f"\n[오류 발생] {e}")
+        finally:
+            sys.stdout = sys.__stdout__
+            progress_state["finished"] = True
+            
+    threading.Thread(target=run_thread, daemon=True).start()
+    return jsonify({"status": "started"})
 
-    @app.route('/progress', methods=['GET'])
-    def get_progress():
-        return jsonify(progress_state)
+@app.route('/progress', methods=['GET'])
+def get_progress():
+    return jsonify(progress_state)
 
+if __name__ == "__main__":
     def open_browser():
-        time.sleep(1.5)
-        webbrowser.open("http://127.0.0.1:5000/")
+        if "RENDER" not in os.environ:
+            time.sleep(1.5)
+            webbrowser.open("http://127.0.0.1:5000/")
 
-    threading.Thread(target=open_browser, daemon=True).start()
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    if "RENDER" not in os.environ:
+        threading.Thread(target=open_browser, daemon=True).start()
+        app.run(host="127.0.0.1", port=5000, debug=False)
+    else:
+        # Render.com 배포 환경 지원 (Port 및 Host 동적 매핑)
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port, debug=False)
