@@ -131,133 +131,35 @@ def clean_product_name(text):
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
-def refactor_to_concise_name(text):
+def optimize_product_name(text):
     """
-    정제된 상품명을 9글자 초과할 경우 약 9자 내외로 핵심 한글 상품명 명사 위주로 스마트하게 압축합니다.
-    브랜드나 단순 규격 숫자만 남는 현상을 완벽하게 방지합니다.
+    원본 상품명(A열)을 보고 제조사, 광고 문구, 중복 단어 및 단순 부식품/사양 키워드(~포함, ~사용 등)를 
+    완벽하게 정밀 제거하여 가장 직관적이고 최적화된 상품명으로 축약해 줍니다 (길이 제한 삭제).
     """
     if not isinstance(text, str) or not text:
         return ""
-    
-    text = text.strip()
-    
-    # 9글자 이하인 경우 압축 불필요
-    if len(text) <= 9:
-        return text
-
-    # 1. 띄어쓰기 결합으로 글자 수 축소
-    compound_words = {
-        "면 장갑": "면장갑",
-        "황 테이프": "황테이프",
-        "스트레치 필름": "스트레치필름",
-        "양면 테이프": "양면테이프",
-        "방수 스프레이": "방수스프레이",
-        "청력 보호구": "청력보호구",
-        "접점 부활": "접점부활",
-        "에폭시 퍼티": "에폭시퍼티",
-        "극세사 행주": "극세사행주",
-        "종이 재단기": "종이재단기",
-        "레이저 포인터": "레이저포인터",
-        "테이프 커터기": "테이프커터기",
-        "투명 보호캡": "투명보호캡"
-    }
-    for k, v in compound_words.items():
-        text = text.replace(k, v)
         
-    if len(text) <= 9:
-        return text
-
-    # 2. 브랜드명/제조사명 먼저 제거 (핵심 한글 명사를 살리기 위해 배제)
-    brand_removed = text
-    for m in sorted(MANUFACTURERS, key=len, reverse=True):
-        if re.match(r'^[a-zA-Z0-9\s]+$', m):
-            pattern = re.compile(rf'\b{re.escape(m)}\b', re.IGNORECASE)
-        else:
-            pattern = re.compile(rf'{re.escape(m)}', re.IGNORECASE)
-        brand_removed = pattern.sub("", brand_removed)
-
-    # 3. 모델명/규격/수량 추출 및 보존 처리
-    # 수량 패턴 (예: 10pcs, 20매, 50mm, 50M)
-    qty_patterns = re.findall(r'\b\d+(?:pcs|PCS|p|P|매|ml|ML|M|m|mm|MM|W|w|V|v|개)\b', text)
-    qty_str = " ".join(qty_patterns) if qty_patterns else ""
-
-    # 모델명 패턴 (예: GST8000E, SS24, X1A, LS1040S)
-    model_patterns = re.findall(r'\b[a-zA-Z0-9]+-[a-zA-Z0-9]+\b|\b[a-zA-Z]+[0-9]+[a-zA-Z]*\b', text)
-    num_codes = re.findall(r'\b[0-9]{3,}\b', text)
-    all_models = model_patterns + [n for n in num_codes if n not in qty_patterns]
-    model_str = " ".join(all_models) if all_models else ""
-
-    # 4. 한글 단어(핵심 상품명 명사)만 정밀 추출
-    words = brand_removed.split()
-    hangul_words = []
+    # 1. 브랜드/괄호/광고문구/중복 단어 기본 제거
+    text = clean_product_name(text)
     
-    # 단순 부속품, 수식 보조어, 포함 관계 키워드를 필터링하여 순수 핵심 상품명만 도출 (접미사 endswith 매칭으로 오동작 방지)
-    exclude_suffixes = ['포함', '사용', '후속', '기능', '대응', '증정', '사은품', '용', '재질', '베어툴', '본체']
+    # 2. 단어 분리 후 단순 수식성 접미사 및 단순 부속품 정보 단어 필터링
+    words = text.split()
+    optimized_words = []
+    
+    exclude_suffixes = ['포함', '사용', '후속', '기능', '대응', '증정', '사은품', '재질', '베어툴', '본체']
     
     for w in words:
-        # 단어에서 수량이나 모델 패턴은 제외
-        if w in qty_patterns or any(m in w for m in all_models):
+        w_clean = re.sub(r'[^\w]', '', w)
+        # 단어가 단순 수식/사양 접미사로 끝나는 경우 제외하여 핵심명만 남김
+        if any(w_clean.endswith(s) for s in exclude_suffixes):
             continue
-        # 한글이 포함된 단어만 핵심 한글 명사로 채택
-        if re.search(r'[가-힣]', w):
-            # 수식어 제거
-            w_clean = re.sub(r'대형|소형|중형|고급|일반|다용도|다목적|휴대용|부착형|접이식', '', w)
-            if any(w_clean.endswith(s) for s in exclude_suffixes):
-                continue
-            if w_clean.strip():
-                hangul_words.append(w_clean.strip())
-
-    # 만약 한글 단어가 아예 없다면, 영숫자 단어라도 살림
-    if not hangul_words:
-        hangul_words = [w for w in words if w not in qty_patterns and not any(m in w for m in all_models)]
-
-    # 5. 핵심 단어 조립 (한국어 문법 상 핵심 명사는 항상 뒤쪽에 옵니다!)
-    core_name = ""
-    if len(hangul_words) >= 2:
-        last_word = hangul_words[-1]
-        second_last = hangul_words[-2]
+        optimized_words.append(w)
         
-        # 중복 방지 (예: 헤라 마감용헤라 -> 헤라가 겹침)
-        if second_last in last_word:
-            core_name = last_word
-        else:
-            combined = f"{second_last} {last_word}"
-            if len(combined) <= 8:
-                core_name = combined
-            else:
-                core_name = last_word
-    elif len(hangul_words) == 1:
-        core_name = hangul_words[0]
-    else:
-        core_name = text[:9]
-
-    # 6. 최종 9자 내외 조립 (한글 핵심명 + 모델명 + 수량)
-    final_parts = [core_name]
-    if model_str and model_str not in core_name:
-        final_parts.append(model_str)
-    if qty_str and qty_str not in core_name:
-        final_parts.append(qty_str)
-
-    final_text = " ".join(final_parts)
-    final_text = re.sub(r'\s+', ' ', final_text).strip()
-
-    # 만약 조립 결과가 9자를 초과하는 경우, 수량/모델명이 들어가 있다면 최대 13자까지는 허용하되,
-    # 그렇지 않다면 핵심 명사 위주로 9자 이하로 타이트하게 자릅니다.
-    if len(final_text) > 9:
-        if not model_str and not qty_str:
-            final_text = final_text[:9].strip()
-        else:
-            # 수량이나 모델이 있다면 핵심명만 5자 내외로 다시 단축해서 전체 길이를 11자 이내로 맞춤
-            short_core = core_name.split()[0][:5]
-            final_parts = [short_core]
-            if model_str:
-                final_parts.append(model_str)
-            if qty_str:
-                final_parts.append(qty_str)
-            final_text = " ".join(final_parts)
-            final_text = re.sub(r'\s+', ' ', final_text).strip()
-
-    return final_text
+    if not optimized_words:
+        optimized_words = words
+        
+    final_text = " ".join(optimized_words)
+    return re.sub(r'\s+', ' ', final_text).strip()
 
 def clean_scraped_title(scraped_title):
     """
@@ -447,57 +349,18 @@ def process_excel(input_path, output_path, progress_callback=None):
     
     for idx, row in df.iterrows():
         prod_name_a = str(row[col_a]).strip()
-        url = str(row[col_b]).strip()
         
         print(f"\n[{idx + 1}/{total_rows}] 처리 중...")
         print(f"   - 원본 상품명(A열): {prod_name_a}")
         
-        cleaned_result = ""
-        scraped_title = None
-        
-        if len(prod_name_a) <= 9:
-            print("   [건너뜀] 상품명이 9자 이하이므로 정제 처리를 건너뛰고 그대로 보존합니다.")
-            cleaned_result = prod_name_a
-        else:
-            if url.startswith("http"):
-                print(f"   - URL 접속 시도: {url}")
-                raw_title = scrape_product_title(url)
-                if raw_title:
-                    scraped_title = clean_scraped_title(raw_title)
-                    print(f"   - 크롤링 성공 상품명: {scraped_title}")
-                    
-            if scraped_title:
-                similarity = calculate_overlap(prod_name_a, scraped_title)
-                is_proper_a = is_proper_product_name(prod_name_a)
-                has_model_match = check_model_code_relevance(prod_name_a, scraped_title)
-                
-                print(f"   - 원본 상품명과의 유사도 검증: {similarity:.2f}")
-                print(f"   - 원본명 신뢰도 판별: {'정상 한글 상품명' if is_proper_a else '불안정한 상품명(모델코드/기호 중심)'}")
-                print(f"   - 핵심 모델/규격 코드 일치 검사: {'일치함' if has_model_match else '일치하지 않음'}")
-                
-                if similarity >= 0.15 or (not is_proper_a and has_model_match) or has_model_match:
-                    if not is_proper_a and has_model_match:
-                        print("   => [유사성 우회 보정] A열이 미비하지만 핵심 모델코드가 일치하여 크롤링 상품명을 70~80% 유사 상품명으로 채택합니다.")
-                    cleaned_result = clean_product_name(scraped_title)
-                    print(f"   -> [크롤링 데이터 정제] 적용: {cleaned_result}")
-                else:
-                    print("   [검증 불합격] 크롤링한 상품명이 원본과 일치하지 않아 원본(A열) 기반으로 정제합니다.")
-                    cleaned_result = clean_product_name(prod_name_a)
-                    print(f"   -> [원본 데이터 정제(Fallback)] 적용: {cleaned_result}")
-            else:
-                print("   [접속 불가능] 원본(A열)을 기반으로 정제 처리를 진행합니다.")
-                cleaned_result = clean_product_name(prod_name_a)
-                print(f"   -> [원본 데이터 정제(Fallback)] 적용: {cleaned_result}")
-            
-        if len(cleaned_result) > 9:
-            concise_result = refactor_to_concise_name(cleaned_result)
-            print(f"   => [9자 최적화 압축 적용]: {cleaned_result} -> {concise_result} (길이: {len(concise_result)}자)")
-            cleaned_result = concise_result
+        # C열 정제된 상품명의 길이 제한은 모두 삭제하고 A열의 상품명을 직접 분석하여 최적의 상품명으로 정제 및 축약합니다.
+        cleaned_result = optimize_product_name(prod_name_a)
+        print(f"   -> [최적 상품명 정제] 적용: {cleaned_result}")
             
         df.at[idx, col_c] = cleaned_result
         if progress_callback:
             progress_callback(idx + 1, total_rows)
-        time.sleep(0.5)
+        time.sleep(0.01)
         
     df.to_excel(output_path, index=False)
     print("\n" + "=" * 60)
