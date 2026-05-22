@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Excel Outputs and Cleaned Results
+*_cleaned.xlsx
+~*.xlsx
+~$*.xlsx
